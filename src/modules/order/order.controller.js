@@ -6,6 +6,7 @@ import couponModel from "../../../db/models/coupon.model.js";
 import cartModel from "../../../db/models/cart.model.js";
 import { createInvoice } from "../../utils/pdf.js";
 import sendEmail from "../../service/sendEmail.js"
+import Stripe from "stripe";
 
 
 
@@ -115,10 +116,74 @@ export const createorder= asynchandler(async(req,res,next)=>{
             contentType: `application/pdf`
         }
     ])
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+    if (paymentMethod == "visa") {
+        const stripe = new Stripe(process.env.secret)
+
+        if (req.body?.coupon) {
+            const coupon = await stripe.coupons.create({
+                percent_off: req.body.coupon.amount,
+                duration: "once"
+            })
+            req.body.coupoId = coupon.id
+        }
+
+        const session = await payments({
+            stripe,
+            payment_method_types: ["visa"],
+            mode: "payment",
+            customer_email: req.user.email,
+            metadata: {
+                orderId: order._id.toString()
+            },
+            success_url: `${req.protocol}://${req.headers.host}/order/success/${order._id}`,
+            cancel_url: `${req.protocol}://${req.headers.host}/order/cancelled/${order._id}`,
+            line_items: order.products.map((product) => {
+                return {
+                    price_data: {
+                        currency: "egp",
+                        product_data: {
+                            name: product.title,
+                        },
+                        unit_amount: product.price * 100
+                    },
+                    quantity: product.quantity
+                }
+            }),
+            discounts: req.body?.coupon ? [{ coupon: req.body.coupoId }] : []
+        })
+        return res.json({ msg: "done", url: session.url,order})
+}
     
     return res.json({msg:"done",order})
 
 })
+
+// export const webhook = asynchandler(async (req, res, next) => {
+//     const stripe = new Stripe(process.env.secret)
+//     const sig = req.headers['stripe-signature'];
+
+//     let event;
+
+//     try {
+//         event = stripe.webhooks.constructEvent(req.body, sig, process.env.endpointSecret);
+//     } catch (err) {
+//         res.status(400).send(`Webhook Error: ${err.message}`);
+//         return;
+//     }
+
+//     const { orderId } = event.data.object.metadata;
+//     if (event.type = ! 'checkout.session.completed') {
+
+
+//         await orderModel.updateOne({ _id: orderId }, { status: "reject" })
+//         return res.json({ msg: "failed" })
+//     }
+//     await orderModel.updateOne({ _id: orderId }, { status: "placed" })
+//     return res.json({ msg:"done"})
+
+
+// });
 
 
 
