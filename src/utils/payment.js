@@ -5,7 +5,7 @@ const stripe = new Stripe(process.env.secret)
 
 export async function payments({
     stripe = new Stripe(process.env.secret),
-    payment_method_types = ['visa'],
+    payment_method_types = ['card'],
     mode = 'payment',
     customer_email,
     success_url,
